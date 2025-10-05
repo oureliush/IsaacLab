@@ -164,6 +164,6 @@ def spawn_multi_usd_file(
         multi_asset_cfg.assets_cfg.append(usd_cfg)
     # set random choice
     multi_asset_cfg.random_choice = cfg.random_choice
-
+        
     # call the original function
     return spawn_multi_asset(prim_path, multi_asset_cfg, translation, orientation)

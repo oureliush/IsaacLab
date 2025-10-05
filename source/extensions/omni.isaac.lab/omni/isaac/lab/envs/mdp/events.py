@@ -359,6 +359,7 @@ def randomize_joint_parameters(
     asset_cfg: SceneEntityCfg,
     friction_distribution_params: tuple[float, float] | None = None,
     armature_distribution_params: tuple[float, float] | None = None,
+    torque_limit_distribution_params: tuple[float, float] | None = None,
     lower_limit_distribution_params: tuple[float, float] | None = None,
     upper_limit_distribution_params: tuple[float, float] | None = None,
     operation: Literal["add", "scale", "abs"] = "abs",
@@ -379,7 +380,7 @@ def randomize_joint_parameters(
     """
     # extract the used quantities (to enable type-hinting)
     asset: Articulation = env.scene[asset_cfg.name]
-
+    
     # resolve environment ids
     if env_ids is None:
         env_ids = torch.arange(env.scene.num_envs, device=asset.device)
@@ -398,6 +399,13 @@ def randomize_joint_parameters(
             friction, friction_distribution_params, env_ids, joint_ids, operation=operation, distribution=distribution
         )[env_ids][:, joint_ids]
         asset.write_joint_friction_to_sim(friction, joint_ids=joint_ids, env_ids=env_ids)
+    # -- torque
+    if torque_limit_distribution_params is not None:
+        torque = asset.data.default_joint_effort_limits.to(asset.device).clone()
+        torque = _randomize_prop_by_op(
+            torque, torque_limit_distribution_params, env_ids, joint_ids, operation=operation, distribution=distribution
+        )[env_ids][:, joint_ids]
+        asset.write_joint_effort_limit_to_sim(torque, joint_ids=joint_ids, env_ids=env_ids)
     # -- armature
     if armature_distribution_params is not None:
         armature = asset.data.default_joint_armature.to(asset.device).clone()
@@ -437,6 +445,40 @@ def randomize_joint_parameters(
             )
 
         asset.write_joint_limits_to_sim(dof_limits[env_ids][:, joint_ids], joint_ids=joint_ids, env_ids=env_ids)
+
+def randomize_joint_default_pos(
+        env: ManagerBasedEnv,
+        env_ids: torch.Tensor | None,
+        asset_cfg: SceneEntityCfg,
+        pos_distribution_params: tuple[float, float] | None = None,
+        operation: Literal["add", "scale", "abs"] = "abs",
+        distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
+):
+    """
+    Randomize the joint default positions which may be different from URDF due to calibration errors.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    # resolve environment ids
+    if env_ids is None:
+        env_ids = torch.arange(env.scene.num_envs, device=asset.device)
+
+    # resolve joint indices
+    if asset_cfg.joint_ids == slice(None):
+        joint_ids = slice(None)  # for optimization purposes
+    else:
+        joint_ids = torch.tensor(asset_cfg.joint_ids, dtype=torch.int, device=asset.device)
+
+    if pos_distribution_params is not None:
+        pos = asset.data.default_joint_pos.to(asset.device).clone()
+        pos = _randomize_prop_by_op(
+            pos, pos_distribution_params, env_ids, joint_ids, operation=operation, distribution=distribution
+        )[env_ids][:, joint_ids]
+
+        if env_ids != slice(None) and joint_ids != slice(None):
+            env_ids = env_ids[:, None]
+        asset.data.default_joint_pos[env_ids, joint_ids] = pos
 
 
 def randomize_fixed_tendon_parameters(

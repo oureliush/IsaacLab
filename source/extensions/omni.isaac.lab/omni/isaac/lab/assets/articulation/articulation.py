@@ -1198,6 +1198,7 @@ class Articulation(AssetBase):
         self._data.default_joint_armature = torch.zeros(self.num_instances, self.num_joints, device=self.device)
         self._data.default_joint_friction = torch.zeros(self.num_instances, self.num_joints, device=self.device)
         self._data.default_joint_limits = torch.zeros(self.num_instances, self.num_joints, 2, device=self.device)
+        self._data.default_joint_effort_limits = torch.zeros(self.num_instances, self.num_joints, device=self.device)
 
         # -- initialize default buffers related to fixed tendon properties
         if self.num_fixed_tendons > 0:
@@ -1292,6 +1293,7 @@ class Articulation(AssetBase):
         self._data.default_joint_damping = self.root_physx_view.get_dof_dampings().to(self.device).clone()
         self._data.default_joint_armature = self.root_physx_view.get_dof_armatures().to(self.device).clone()
         self._data.default_joint_friction = self.root_physx_view.get_dof_friction_coefficients().to(self.device).clone()
+        self._data.default_joint_effort_limits = self.root_physx_view.get_dof_max_forces().to(self.device).clone()
 
         # iterate over all actuator configurations
         for actuator_name, actuator_cfg in self.cfg.actuators.items():

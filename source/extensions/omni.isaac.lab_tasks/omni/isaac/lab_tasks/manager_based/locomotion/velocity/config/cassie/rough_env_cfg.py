@@ -34,7 +34,7 @@ class CassieRewardsCfg(RewardsCfg):
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.2,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["hip_abduction_.*", "hip_rotation_.*"])},
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*Hip_Joint", ".*Thigh_Joint"])},
     )
     joint_deviation_toes = RewTerm(
         func=mdp.joint_deviation_l1,

@@ -133,6 +133,9 @@ class ArticulationData:
     default_joint_damping: torch.Tensor = None
     """Default joint damping of all joints. Shape is (num_instances, num_joints)."""
 
+    default_joint_effort_limits: torch.Tensor = None
+    """Default joint effort_limit of all joints. Shape is (num_instances, num_joints)."""
+
     default_joint_armature: torch.Tensor = None
     """Default joint armature of all joints. Shape is (num_instances, num_joints)."""
 
