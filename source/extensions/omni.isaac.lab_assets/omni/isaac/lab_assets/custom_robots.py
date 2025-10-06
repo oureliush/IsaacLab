@@ -763,3 +763,47 @@ TWOJLR_CFG = ArticulationCfg(
     ),
   },
 )
+
+
+TWOJLRGEN2_CFG = ArticulationCfg(
+  spawn=sim_utils.UsdFileCfg(
+    activate_contact_sensors=True,
+    usd_path=f"/home/ourelius/Desktop/2JLRv2.usd",
+    rigid_props=sim_utils.RigidBodyPropertiesCfg(
+      disable_gravity=False,
+      retain_accelerations=False,
+      max_linear_velocity=1000.0,
+      max_angular_velocity=1000.0,
+      max_depenetration_velocity=1.0,
+    ),
+    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+      enabled_self_collisions=False,
+      solver_position_iteration_count=4,
+      solver_velocity_iteration_count=4,
+    ),
+  ),
+  init_state=ArticulationCfg.InitialStateCfg(
+    pos=(0.0, 0.0, 0.0),
+    joint_pos={"Revolute_23": 0.0, "Revolute_26": 0.0}
+  ),
+  actuators={
+    "Knee_actuator": DelayedPDActuatorCfg(
+       joint_names_expr=["Revolute_23"],
+       effort_limit=34.74,
+       velocity_limit=20.9439510239, # 10*4 RPS Limit (ODrive Speed Unit)
+       stiffness=0.0,
+       damping=0.0,
+       min_delay=0,  # physics time steps (min: 2.0*0=0.0ms)
+       max_delay=1,
+    ),
+    "Foot_actuator": DelayedPDActuatorCfg(
+       joint_names_expr=["Revolute_26"], 
+       effort_limit=23.16,
+       velocity_limit=36.6519142919, # 5*4 RPS Limit (ODrive Speed Unit)
+       stiffness=0.0,
+       damping=0.0,
+       min_delay=0,  # physics time steps (min: 2.0*0=0.0ms)
+       max_delay=1,
+    ),
+  },
+)

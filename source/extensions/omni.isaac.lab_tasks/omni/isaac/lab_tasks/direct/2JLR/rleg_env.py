@@ -23,7 +23,7 @@ from omni.isaac.lab.utils.noise import NoiseModelWithAdditiveBiasCfg, GaussianNo
 
 from omni.isaac.lab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, patterns, ContactSensor, ImuCfg, Imu
 
-from omni.isaac.lab_assets.custom_robots import TWOJLR_CFG 
+from omni.isaac.lab_assets.custom_robots import TWOJLRGEN2_CFG 
 
 from collections.abc import Sequence
 import torch
@@ -39,7 +39,7 @@ class EventCfg:
       func=mdp.randomize_rigid_body_material,
       mode="startup",
       params={
-          "asset_cfg": SceneEntityCfg("TWOJLR", body_names=".*"),
+          "asset_cfg": SceneEntityCfg("a_JLR_2", body_names=".*"),
           "static_friction_range": (0.7, 2.0),
           "dynamic_friction_range": (0.7, 2.0),
           "restitution_range": (1.0, 1.0),
@@ -51,7 +51,7 @@ class EventCfg:
       func=mdp.randomize_rigid_body_mass,
       mode="startup",
       params={
-          "asset_cfg": SceneEntityCfg("TWOJLR",  body_names=".*"),
+          "asset_cfg": SceneEntityCfg("a_JLR_2",  body_names=".*"),
           "mass_distribution_params": (0.75, 1.25),
           "operation": "scale",
           "distribution": "log_uniform",
@@ -74,7 +74,7 @@ class EventCfg:
       func=mdp.randomize_joint_parameters,
       mode="startup",
       params={
-          "asset_cfg": SceneEntityCfg("TWOJLR", joint_names="Revolute_14"),
+          "asset_cfg": SceneEntityCfg("a_JLR_2", joint_names="Revolute_23"),
 #          "upper_limit_distribution_params": (-0.25, 0.25),
 #          "lower_limit_distribution_params": (-0.25, 0.25),
           "friction_distribution_params": (0.0, 0.2),
@@ -87,7 +87,7 @@ class EventCfg:
       func=mdp.randomize_joint_parameters,
       mode="startup",
       params={
-          "asset_cfg": SceneEntityCfg("TWOJLR", joint_names=".*"),
+          "asset_cfg": SceneEntityCfg("a_JLR_2", joint_names=".*"),
           "torque_limit_distribution_params": (0.5, 0.85),
           "operation": "scale",
           "distribution": "log_uniform",
@@ -98,7 +98,7 @@ class EventCfg:
       func=mdp.randomize_joint_parameters,
       mode="startup",
       params={
-          "asset_cfg": SceneEntityCfg("TWOJLR", joint_names="Revolute_17"),
+          "asset_cfg": SceneEntityCfg("a_JLR_2", joint_names="Revolute_26"),
 #          "upper_limit_distribution_params": (-0.25, 0.25),
 #          "lower_limit_distribution_params": (-0.25, 0.25),
           "friction_distribution_params": (0.0, 0.2),
@@ -112,7 +112,7 @@ class EventCfg:
     func=mdp.randomize_joint_default_pos,
     mode="startup",
     params={
-        "asset_cfg": SceneEntityCfg("TWOJLR", joint_names=[".*"]), 
+        "asset_cfg": SceneEntityCfg("a_JLR_2", joint_names=[".*"]), 
         "pos_distribution_params": (-0.05, 0.05),
         "operation": "add"
       },
@@ -149,7 +149,7 @@ class TWOJLREnvCfg(DirectRLEnvCfg):
     decimation = 4
     episode_length_s = 20.0
     action_space = 2
-    observation_space = 10
+    observation_space = 11
     state_space = 0
 
     # Simulation configuration
@@ -168,18 +168,22 @@ class TWOJLREnvCfg(DirectRLEnvCfg):
     )
 
     # robot
-    robot_cfg: ArticulationCfg = TWOJLR_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot_cfg: ArticulationCfg = TWOJLRGEN2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
     )
     
-    imu: ImuCfg = ImuCfg(
-        prim_path="/World/envs/env_.*/Robot/IMU_1", gravity_bias=(0, 0, 0),
+    baseimu: ImuCfg = ImuCfg(
+        prim_path="/World/envs/env_.*/Robot/BNO085_IMU_v1_1", gravity_bias=(0, 0, 0),
     )
 
-    knee_dof_name = "Revolute_14"
-    foot_dof_name = "Revolute_17"
+    footimu: ImuCfg = ImuCfg(
+        prim_path="/World/envs/env_.*/Robot/Foot_IMU_1", gravity_bias=(0, 0, 0),
+    )
+
+    knee_dof_name = "Revolute_23"
+    foot_dof_name = "Revolute_26"
   
     events: EventCfg = EventCfg() 
 
@@ -240,6 +244,7 @@ class TWOJLREnv(DirectRLEnv):
 
         self._otherthanfoot_ids, _ = self._contact_sensor.find_bodies("^(?!Foot_1$).*$")
         self._foot_id, _ = self._contact_sensor.find_bodies("Foot_1")
+        self._baseimu_id, _ = self._contact_sensor.find_bodies("Foot_1")
         
         self.scene.update(dt=self.physics_dt) # Add this line
 
@@ -251,14 +256,16 @@ class TWOJLREnv(DirectRLEnv):
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
-        self._imu = Imu(self.cfg.imu)
+        self._baseimu = Imu(self.cfg.baseimu)
+        self._footimu = Imu(self.cfg.footimu)
 
         self.scene.sensors["contact_sensor"] = self._contact_sensor
-        self.scene.sensors["imu"] = self._imu
+        self.scene.sensors["baseimu"] = self._baseimu
+        self.scene.sensors["footimu"] = self._footimu
         
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[])
-        self.scene.articulations["TWOJLR"] = self.leg
+        self.scene.articulations["a_JLR_2"] = self.leg
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
@@ -294,9 +301,28 @@ class TWOJLREnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         joint_pos = self.joint_pos.to(device=self.device)
         joint_vel = self.joint_vel.to(device=self.device)
+
+        base_imu_orient = self._baseimu.data.quat_w
+
+        #print(base_imu_orient)
+
+        qr = base_imu_orient[:, [0]]
+        qi = base_imu_orient[:, [1]]
+        qj = base_imu_orient[:, [2]]
+        qk = base_imu_orient[:, [3]]
+
+        sqr = torch.square(qr)
+        sqi = torch.square(qi)
+        sqj = torch.square(qj)
+        sqk = torch.square(qk)
         
-        imu_lin_acc = self._imu.data.lin_acc_b
-        imu_ang_vel = self._imu.data.ang_vel_b
+        pitch = torch.atan2(2.0 * (qj * qk + qi * qr),  (-sqi - sqj + sqk + sqr))
+        self.pitch = torch.rad2deg(pitch)
+
+        #print(self.pitch)
+
+        imu_lin_acc = self._footimu.data.lin_acc_b
+        imu_ang_vel = self._footimu.data.ang_vel_b
 
         # Round the IMU observations to 2 decimal places
         imu_lin_acc = torch.round(imu_lin_acc * 100) / 100
@@ -313,6 +339,7 @@ class TWOJLREnv(DirectRLEnv):
                 joint_vel[:, self._foot_dof_idx[0]].unsqueeze(dim=1),
                 imu_lin_acc,
                 imu_ang_vel,
+                self.pitch,
             ),
             dim=-1,
         )
@@ -362,7 +389,8 @@ class TWOJLREnv(DirectRLEnv):
         knee_pos = joint_pos[:, self._knee_dof_idx[0]]
         foot_pos = joint_pos[:, self._foot_dof_idx[0]]
 
-        base_orientation = knee_pos + foot_pos
+        base_orientation = self.pitch[:, 0]
+        #print(base_orientation)
         base_orientation = torch.abs(base_orientation)
 
 
