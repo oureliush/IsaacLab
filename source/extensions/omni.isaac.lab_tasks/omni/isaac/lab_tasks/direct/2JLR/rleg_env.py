@@ -415,7 +415,7 @@ class TWOJLREnv(DirectRLEnv):
         )
         
         maximum_reward = 5.0
-        good_robot = 5.0 + ((base_orientation/10) * maximum_reward)
+        good_robot = 5.0 + (maximum_reward - (base_orientation/10)*maximum_reward)
         bad_robot = -5.0
 
         # The conditions that reset robot
