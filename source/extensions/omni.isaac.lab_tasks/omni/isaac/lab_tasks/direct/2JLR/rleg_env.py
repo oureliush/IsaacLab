@@ -217,7 +217,7 @@ class TWOJLREnv(DirectRLEnv):
         self.torque_limits = torch.tensor([34.74, 23.16], device=self.device)  # Torque limits for "Knee" and "Foot" actuators
         
         self.motor_torque_limits = torch.tensor([3.86, 3.86], device=self.device)  # Torque limits for "Knee" and "Foot" motors
-        self.gearbox_ratio = torch.tensor([12.00, 8.00], device=self.device)
+        self.gearbox_ratio = torch.tensor([9.00, 6.00], device=self.device)
 
         self.actions_high = torch.tensor([1.0, 1.0], device=self.device)
         self.actions_low = torch.tensor([-1.0, -1.0], device=self.device)
