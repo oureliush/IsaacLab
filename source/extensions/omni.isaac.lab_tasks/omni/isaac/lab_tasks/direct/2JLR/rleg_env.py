@@ -282,9 +282,11 @@ class TWOJLREnv(DirectRLEnv):
 
       #print(self.actions)
 
-      self.idealtorques = self.clamped_actions * self.torque_limits
+      gearbox_ratio = torch.tensor([9.00, 6.00], device=self.device)
 
-      motor_torque = self.clamped_actions * self.motor_torque_limits    # [n,2]
+      self.idealtorques = self.actions * self.torque_limits
+
+      motor_torque = self.actions * self.motor_torque_limits    # [n,2]
       self.current_torques = motor_torque * self.gearbox_ratio  # applies per-env ratio
 
       #print(self.actions)
@@ -303,8 +305,6 @@ class TWOJLREnv(DirectRLEnv):
         joint_vel = self.joint_vel.to(device=self.device)
 
         base_imu_orient = self._baseimu.data.quat_w
-
-        #print(base_imu_orient)
 
         qr = base_imu_orient[:, [0]]
         qi = base_imu_orient[:, [1]]
@@ -375,11 +375,9 @@ class TWOJLREnv(DirectRLEnv):
         contact_threshold = 30.0
         degree_to_rad = torch.pi / 180.0
 
-
-
         # Convert degree thresholds to radians
-        base_10deg = 10.0 * degree_to_rad
-        base_20deg = 20.0 * degree_to_rad
+        base_10deg = 10.0
+        base_20deg = 20.0
         joint_10deg = 10.0 * degree_to_rad
         joint_20deg = 20.0 * degree_to_rad
 
@@ -393,14 +391,9 @@ class TWOJLREnv(DirectRLEnv):
         #print(base_orientation)
         base_orientation = torch.abs(base_orientation)
 
-
-        
         forces = self._contact_sensor.data.net_forces_w_history[:, -1, self._foot_id, :]
         forces = forces.squeeze(1)  # remove singleton dimension if present
         force_magnitude = torch.norm(forces, dim=-1)
-
-
-
 
         # Conditions needed to be met for positive rewards
         is_base_within_10deg = base_orientation < base_10deg
@@ -416,7 +409,7 @@ class TWOJLREnv(DirectRLEnv):
         
         maximum_reward = 5.0
         good_robot = 5.0 + (maximum_reward - (base_orientation/10)*maximum_reward)
-        bad_robot = -5.0
+        bad_robot = -20.0
 
         # The conditions that reset robot
         self.is_knee_joint_outside_20deg = torch.abs(knee_pos) > joint_20deg
