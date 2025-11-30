@@ -248,7 +248,7 @@ class TWOJLREnv(DirectRLEnv):
 
         # — new: sample gear ratios once at startup —
         n_envs = self.cfg.scene.num_envs
-        base_ratio = torch.tensor([12.0, 8.0], device=self.device)            # nominal [knee, foot]
+        base_ratio = torch.tensor([9.0, 6.0], device=self.device)            # nominal [knee, foot]
         ineff   = torch.rand((n_envs, 2), device=self.device) * 0.2 + 0.8  # uniform in [0.8,1.0]
         self.gearbox_ratio = base_ratio.unsqueeze(0) * ineff              # shape [n_envs,2]
 
