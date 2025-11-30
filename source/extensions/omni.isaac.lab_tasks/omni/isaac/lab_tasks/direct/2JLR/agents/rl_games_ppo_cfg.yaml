@@ -55,7 +55,7 @@ params:
     learning_rate: 5e-4 
     lr_schedule: adaptive
     kl_threshold: 0.008
-    score_to_win: 800 # currently 800 because the policy seems to exploit the reward function and bad things happen
+    score_to_win: 2000000 # currently 800 because the policy seems to exploit the reward function and bad things happen
     max_epochs: 100000  # basically never ending training
     save_best_after: 200
     save_frequency: 1000

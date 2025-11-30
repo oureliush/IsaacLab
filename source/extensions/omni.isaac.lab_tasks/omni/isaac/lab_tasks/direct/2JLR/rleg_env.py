@@ -25,6 +25,8 @@ from omni.isaac.lab.sensors import CameraCfg, ContactSensorCfg, RayCasterCfg, pa
 
 from omni.isaac.lab_assets.custom_robots import TWOJLRGEN2_CFG 
 
+import gymnasium as gym
+
 from collections.abc import Sequence
 import torch
 import numpy as np
@@ -147,9 +149,9 @@ class EventCfg:
 class TWOJLREnvCfg(DirectRLEnvCfg):
 
     decimation = 4
-    episode_length_s = 20.0
+    episode_length_s = 5.0
     action_space = 2
-    observation_space = 11
+    observation_space = 8
     state_space = 0
 
     # Simulation configuration
@@ -179,7 +181,7 @@ class TWOJLREnvCfg(DirectRLEnvCfg):
     )
 
     footimu: ImuCfg = ImuCfg(
-        prim_path="/World/envs/env_.*/Robot/Foot_IMU_1", gravity_bias=(0, 0, 0),
+        prim_path="/World/envs/env_.*/Robot/Foot_IMU_1", 
     )
 
     knee_dof_name = "Revolute_23"
@@ -222,6 +224,8 @@ class TWOJLREnv(DirectRLEnv):
         self.actions_high = torch.tensor([1.0, 1.0], device=self.device)
         self.actions_low = torch.tensor([-1.0, -1.0], device=self.device)
 
+        self.action_rate_scale = -0.01
+
         self._knee_dof_idx, _ = self.leg.find_joints(self.cfg.knee_dof_name)
         self._foot_dof_idx, _ = self.leg.find_joints(self.cfg.foot_dof_name)
 
@@ -230,9 +234,17 @@ class TWOJLREnv(DirectRLEnv):
 
         self.fallen_over = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
 
+        self._previous_actions = torch.zeros(
+            self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device
+        )
+
         self.is_knee_joint_outside_20deg = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
         self.is_foot_joint_outside_20deg = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
         self.is_base_outside_20deg = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
+
+        self.is_knee_joint_outside_10deg = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
+        self.is_foot_joint_outside_10deg = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
+        self.is_base_outside_10deg = torch.zeros(self.cfg.scene.num_envs, dtype=torch.bool, device=self.sim.device)
 
         # — new: sample gear ratios once at startup —
         n_envs = self.cfg.scene.num_envs
@@ -244,7 +256,7 @@ class TWOJLREnv(DirectRLEnv):
 
         self._otherthanfoot_ids, _ = self._contact_sensor.find_bodies("^(?!Foot_1$).*$")
         self._foot_id, _ = self._contact_sensor.find_bodies("Foot_1")
-        self._baseimu_id, _ = self._contact_sensor.find_bodies("Foot_1")
+        #self._baseimu_id, _ = self._contact_sensor.find_bodies("Foot_1")
         
         self.scene.update(dt=self.physics_dt) # Add this line
 
@@ -301,6 +313,8 @@ class TWOJLREnv(DirectRLEnv):
       self.leg.set_joint_effort_target(self.current_torques)
 
     def _get_observations(self) -> dict:
+        self._previous_actions = self.actions.clone()
+        
         joint_pos = self.joint_pos.to(device=self.device)
         joint_vel = self.joint_vel.to(device=self.device)
 
@@ -318,7 +332,7 @@ class TWOJLREnv(DirectRLEnv):
         
         pitch = torch.atan2(2.0 * (qj * qk + qi * qr),  (-sqi - sqj + sqk + sqr))
         self.pitch = torch.rad2deg(pitch)
-
+        
         #print(self.pitch)
 
         imu_lin_acc = self._footimu.data.lin_acc_b
@@ -338,18 +352,17 @@ class TWOJLREnv(DirectRLEnv):
                 joint_pos[:, self._foot_dof_idx[0]].unsqueeze(dim=1), 
                 joint_vel[:, self._foot_dof_idx[0]].unsqueeze(dim=1),
                 imu_lin_acc,
-                imu_ang_vel,
                 self.pitch,
             ),
             dim=-1,
         )
-
+        '''
         test_input = torch.tensor([0.6789, -1.2345, 4.5678, -3.2109, 
                                   2.3456, -0.9876, 1.2345, 0.4321, 
                                   -2.3456, 3.1415, -1.6180, 2.7182]).to(device=self.device)
         # If your models expect a batch dimension, add one:
         test_input = test_input.unsqueeze(0)  # Shape: [1, 12]
-        
+        '''
         observations = {"policy": obs}
         return observations
 
@@ -373,13 +386,12 @@ class TWOJLREnv(DirectRLEnv):
     
     def _get_rewards(self) -> torch.Tensor:
         contact_threshold = 30.0
-        degree_to_rad = torch.pi / 180.0
 
         # Convert degree thresholds to radians
         base_10deg = 10.0
-        base_20deg = 20.0
-        joint_10deg = 10.0 * degree_to_rad
-        joint_20deg = 20.0 * degree_to_rad
+        base_20deg = 20.0 #base isnt converted to radians because self.pitch is already in degrees.
+        joint_10deg = np.deg2rad(10.0)
+        joint_20deg = np.deg2rad(20.0)      
 
         joint_pos = self.leg.data.joint_pos.to(device=self.device)   # shape: [num_envs, 2]
         joint_vel = self.leg.data.joint_vel.to(device=self.device)   # shape: [num_envs, 2]
@@ -390,6 +402,7 @@ class TWOJLREnv(DirectRLEnv):
         base_orientation = self.pitch[:, 0]
         #print(base_orientation)
         base_orientation = torch.abs(base_orientation)
+        #torch.clamp(base_orientation, 0.0, 25.0) #clamp pitch to hopefully prevent exploitation.
 
         forces = self._contact_sensor.data.net_forces_w_history[:, -1, self._foot_id, :]
         forces = forces.squeeze(1)  # remove singleton dimension if present
@@ -407,14 +420,23 @@ class TWOJLREnv(DirectRLEnv):
             & foot_contact
         )
         
+
+        action_rate = torch.sum(torch.square(self.actions - self._previous_actions), dim=1)
+        action_penalty = action_rate * self.action_rate_scale
+
         maximum_reward = 5.0
         good_robot = 5.0 + (maximum_reward - (base_orientation/10)*maximum_reward)
         bad_robot = -20.0
+
 
         # The conditions that reset robot
         self.is_knee_joint_outside_20deg = torch.abs(knee_pos) > joint_20deg
         self.is_foot_joint_outside_20deg = torch.abs(foot_pos) > joint_20deg
         self.is_base_outside_20deg = base_orientation > base_20deg
+        
+        self.is_knee_joint_outside_10deg = torch.abs(knee_pos) > joint_10deg
+        self.is_foot_joint_outside_10deg = torch.abs(foot_pos) > joint_10deg
+        self.is_base_outside_10deg = base_orientation > base_10deg
         
         # using scalars here preserves the 1-D shape automatically
         reward = torch.where(eligible_for_rewards, good_robot, bad_robot)
@@ -440,6 +462,9 @@ class TWOJLREnv(DirectRLEnv):
         super()._reset_idx(env_ids)
         self.leg.reset(env_ids)
 
+        self.actions[env_ids] = 0.0
+        self._previous_actions[env_ids] = 0.0
+        
         joint_pos = self.leg.data.default_joint_pos[env_ids].to(device=self.device)
         joint_vel = self.leg.data.default_joint_vel[env_ids].to(device=self.device)
 
